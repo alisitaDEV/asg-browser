@@ -231,6 +231,10 @@ export default function Index() {
             setCanGoForward(nav.canGoForward);
             setInputUrl(nav.url);
           }}
+          javaScriptEnabled={true}                 
+          domStorageEnabled={true}                 
+          mediaPlaybackRequiresUserAction={false} 
+          allowsFullscreenVideo={true}            
           {...(Platform.OS === 'android'
             ? { forceDarkOn: darkMode }
             : {})}
