@@ -4,34 +4,48 @@ import {
   Platform,
   View,
   Pressable,
+  Text,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import Header from './components/Header';
 import Toolbar from './components/Toolbar';
 import MenuSheet from './components/MenuSheet';
 import BookmarkList from './components/BookmarkList';
+import TabList from './components/TabList';
 
 const HEADER_HEIGHT = 50;
 
+type Tab = {
+  id: string;
+  url: string;
+  canGoBack: boolean;
+  canGoForward: boolean;
+};
+
 export default function Index() {
   const webViewRef = useRef<WebView>(null);
-
   const [inputUrl, setInputUrl] = useState('https://example.com');
   const [url, setUrl] = useState(inputUrl);
   const [progress, setProgress] = useState(0);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
-
   const [darkMode, setDarkMode] = useState(false);
   const [bookmarks, setBookmarks] = useState<string[]>([]);
-
   const [showMenu, setShowMenu] = useState(false);
   const [showBookmarks, setShowBookmarks] = useState(false);
+  const [tabs, setTabs] = useState<Tab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string>();
+  const [showTabs, setShowTabs] = useState(false);
 
-  const overlayVisible = showMenu || showBookmarks;
+  const overlayVisible = showMenu || showBookmarks || showTabs;
+
+  const closeAllSheets = () => {
+    setShowMenu(false);
+    setShowBookmarks(false);
+    setShowTabs(false);
+  };
 
   /* ================= LOAD STORAGE ================= */
   useEffect(() => {
@@ -47,7 +61,7 @@ export default function Index() {
     })();
   }, []);
 
-  /* ================= SAVE STORAGE ================= */
+  /* ================= SAVE DARK MODE ================= */
   useEffect(() => {
     (async () => {
       try {
@@ -71,10 +85,19 @@ export default function Index() {
     }
   };
 
+  const deleteBookmark = async (urlToDelete: string) => {
+    const newBookmarks = bookmarks.filter(b => b !== urlToDelete);
+    setBookmarks(newBookmarks);
+    try {
+      await AsyncStorage.setItem('bookmarks', JSON.stringify(newBookmarks));
+    } catch (e) {
+      console.error('Failed to delete bookmark', e);
+    }
+  };
+
   /* ================= ANDROID BACK ================= */
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-
     const sub = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
@@ -86,6 +109,10 @@ export default function Index() {
           setShowBookmarks(false);
           return true;
         }
+        if (showTabs) {
+          setShowTabs(false);
+          return true;
+        }
         if (canGoBack) {
           webViewRef.current?.goBack();
           return true;
@@ -93,9 +120,8 @@ export default function Index() {
         return false;
       }
     );
-
     return () => sub.remove();
-  }, [canGoBack, showMenu, showBookmarks]);
+  }, [canGoBack, showMenu, showBookmarks, showTabs]);
 
   /* ================= URL ================= */
   const openUrl = () => {
@@ -104,7 +130,22 @@ export default function Index() {
       finalUrl = 'https://' + finalUrl;
     }
     setUrl(finalUrl);
-    setShowMenu(false);
+
+    const existingTab = tabs.find(t => t.url === finalUrl);
+    if (!existingTab) {
+      const newTab: Tab = {
+        id: Date.now().toString(),
+        url: finalUrl,
+        canGoBack: false,
+        canGoForward: false,
+      };
+      setTabs(prev => [...prev, newTab]);
+      setActiveTabId(newTab.id);
+    } else {
+      setActiveTabId(existingTab.id);
+    }
+
+    closeAllSheets();
   };
 
   /* ================= COLORS ================= */
@@ -117,9 +158,9 @@ export default function Index() {
     icon: '#fff',
   };
 
+  /* ================= RENDER ================= */
   return (
     <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-
       {/* ================= HEADER ================= */}
       <View style={{ zIndex: 50 }}>
         <Header
@@ -134,10 +175,73 @@ export default function Index() {
             canGoBack={canGoBack}
             canGoForward={canGoForward}
             webViewRef={webViewRef}
-            onMenu={() => setShowMenu(prev => !prev)}
+            onMenu={() => {
+              setShowMenu(prev => !prev);
+              setShowBookmarks(false);
+              setShowTabs(false);
+            }}
+            onTab={() => {
+              setShowTabs(prev => !prev);
+              setShowMenu(false);
+              setShowBookmarks(false);
+            }}
           />
         </Header>
       </View>
+
+      {/* ================= TAB LIST ================= */}
+      {showTabs && (
+        <View
+          style={{
+            position: 'absolute',
+            top: HEADER_HEIGHT,
+            left: 0,
+            right: 0,
+            zIndex: 70,
+            backgroundColor: colors.header,
+          }}
+        >
+          <TabList
+            tabs={tabs}
+            activeTabId={activeTabId}
+            colors={colors}
+            onSelect={(tab) => {
+              setActiveTabId(tab.id);
+              setUrl(tab.url);
+              setInputUrl(tab.url);
+              closeAllSheets();
+            }}
+            onClose={(tab) => {
+              setTabs(prev => prev.filter(t => t.id !== tab.id));
+              if (tab.id === activeTabId && tabs.length > 1) {
+                const nextTab = tabs.find(t => t.id !== tab.id);
+                if (nextTab) {
+                  setActiveTabId(nextTab.id);
+                  setUrl(nextTab.url);
+                  setInputUrl(nextTab.url);
+                }
+              } else if (tabs.length === 1) {
+                setActiveTabId(undefined);
+                setUrl('about:blank');
+                setInputUrl('');
+              }
+            }}
+            onAddTab={() => {
+              const newTab: Tab = {
+                id: Date.now().toString(),
+                url: 'about:blank',
+                canGoBack: false,
+                canGoForward: false,
+              };
+              setTabs(prev => [...prev, newTab]);
+              setActiveTabId(newTab.id);
+              setUrl(newTab.url);
+              setInputUrl(newTab.url);
+              closeAllSheets();
+            }}
+          />
+        </View>
+      )}
 
       {/* ================= TOUCH BLOCKER ================= */}
       {overlayVisible && (
@@ -150,10 +254,7 @@ export default function Index() {
             bottom: 0,
             zIndex: 20,
           }}
-          onPress={() => {
-            setShowMenu(false);
-            setShowBookmarks(false);
-          }}
+          onPress={closeAllSheets}
         />
       )}
 
@@ -172,22 +273,23 @@ export default function Index() {
             darkMode={darkMode}
             onToggleDark={() => {
               setDarkMode(p => !p);
-              setShowMenu(false);
+              closeAllSheets();
             }}
             onAddBookmark={() => {
               addBookmark();
-              setShowMenu(false);
+              closeAllSheets();
             }}
             onShowBookmarks={() => {
               setShowMenu(false);
               setShowBookmarks(true);
+              setShowTabs(false);
             }}
-            onClose={() => setShowMenu(false)}
+            onClose={closeAllSheets}
           />
         </View>
       )}
 
-      {/* ================= BOOKMARK LIST (FIXED) ================= */}
+      {/* ================= BOOKMARK LIST ================= */}
       {showBookmarks && (
         <View
           style={{
@@ -205,14 +307,15 @@ export default function Index() {
             onSelect={(b: string) => {
               setUrl(b);
               setInputUrl(b);
-              setShowBookmarks(false);
+              closeAllSheets();
             }}
-            onClose={() => setShowBookmarks(false)}
+            onClose={closeAllSheets}
+            onDelete={deleteBookmark} 
           />
         </View>
       )}
 
-      {/* ================= CONTENT ================= */}
+      {/* ================= WEBVIEW / IFRAME ================= */}
       {Platform.OS === 'web' ? (
         <iframe
           src={url}
@@ -226,18 +329,23 @@ export default function Index() {
           onLoadProgress={({ nativeEvent }) =>
             setProgress(nativeEvent.progress)
           }
-          onNavigationStateChange={(nav) => {
+          onNavigationStateChange={nav => {
             setCanGoBack(nav.canGoBack);
             setCanGoForward(nav.canGoForward);
             setInputUrl(nav.url);
+            setTabs(prev =>
+              prev.map(t =>
+                t.id === activeTabId
+                  ? { ...t, canGoBack: nav.canGoBack, canGoForward: nav.canGoForward }
+                  : t
+              )
+            );
           }}
-          javaScriptEnabled={true}                 
-          domStorageEnabled={true}                 
-          mediaPlaybackRequiresUserAction={false} 
-          allowsFullscreenVideo={true}            
-          {...(Platform.OS === 'android'
-            ? { forceDarkOn: darkMode }
-            : {})}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          mediaPlaybackRequiresUserAction={false}
+          allowsFullscreenVideo={true}
+          {...(Platform.OS === 'android' ? { forceDarkOn: darkMode } : {})}
         />
       )}
     </SafeAreaView>

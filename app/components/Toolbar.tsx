@@ -8,6 +8,7 @@ export default function Toolbar({
   canGoForward,
   webViewRef,
   onMenu,
+  onTab,
 }: any) {
   return (
     <View
@@ -17,7 +18,7 @@ export default function Toolbar({
         justifyContent: 'space-between',
         paddingHorizontal: 6,
         paddingBottom: 6,
-        backgroundColor: colors.header, // PENTING
+        backgroundColor: colors.header,
       }}
     >
       {/* LEFT */}
@@ -41,14 +42,23 @@ export default function Toolbar({
         </IconBtn>
       </View>
 
-      {/* MENU */}
-      <IconBtn onPress={onMenu}>
-        <Ionicons
-          name="ellipsis-vertical"
-          size={22}
-          color={colors.icon}
-        />
-      </IconBtn>
+      {/* RIGHT */}
+      <View style={{ flexDirection: 'row' }}>
+        {/* TAB BUTTON */}
+        <IconBtn onPress={onTab}>
+          <Ionicons name="albums-outline" size={22} color={colors.icon} />
+        </IconBtn>
+
+        {/* MENU */}
+        <IconBtn onPress={onMenu}>
+          <Ionicons
+            name="ellipsis-vertical"
+            size={22}
+            color={colors.icon}
+          />
+        </IconBtn>
+      </View>
     </View>
   );
 }
+  
