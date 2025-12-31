@@ -26,7 +26,6 @@ export default function MenuSheet({
         zIndex: 999,
       }}
     >
-      {/* MENU BOX */}
       <Pressable
         onPress={() => {}}
         style={{

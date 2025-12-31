@@ -22,7 +22,6 @@ export default function BookmarkList({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.3)',
         zIndex: 998,
       }}
     >
@@ -30,9 +29,9 @@ export default function BookmarkList({
         onPress={() => {}}
         style={{
           position: 'absolute',
-          top: 120,
-          left: 10,
-          right: 10,
+          top: 90,
+          left: 20,
+          right: 20,
           maxHeight: 300,
           backgroundColor: colors.inputBg,
           borderRadius: 10,

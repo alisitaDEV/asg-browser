@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { BackHandler, Platform, View } from 'react-native';
+import {
+  BackHandler,
+  Platform,
+  View,
+  Pressable,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import Header from './components/Header';
 import Toolbar from './components/Toolbar';
 import MenuSheet from './components/MenuSheet';
 import BookmarkList from './components/BookmarkList';
+
+const HEADER_HEIGHT = 50;
 
 export default function Index() {
   const webViewRef = useRef<WebView>(null);
@@ -23,8 +31,50 @@ export default function Index() {
   const [showMenu, setShowMenu] = useState(false);
   const [showBookmarks, setShowBookmarks] = useState(false);
 
+  const overlayVisible = showMenu || showBookmarks;
+
+  /* ================= LOAD STORAGE ================= */
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await AsyncStorage.getItem('darkMode');
+        const b = await AsyncStorage.getItem('bookmarks');
+        if (d) setDarkMode(JSON.parse(d));
+        if (b) setBookmarks(JSON.parse(b));
+      } catch (e) {
+        console.error('Failed to load storage', e);
+      }
+    })();
+  }, []);
+
+  /* ================= SAVE STORAGE ================= */
+  useEffect(() => {
+    (async () => {
+      try {
+        await AsyncStorage.setItem('darkMode', JSON.stringify(darkMode));
+      } catch (e) {
+        console.error('Failed to save darkMode', e);
+      }
+    })();
+  }, [darkMode]);
+
+  /* ================= BOOKMARK ================= */
+  const addBookmark = async () => {
+    if (!bookmarks.includes(url)) {
+      const newBookmarks = [...bookmarks, url];
+      setBookmarks(newBookmarks);
+      try {
+        await AsyncStorage.setItem('bookmarks', JSON.stringify(newBookmarks));
+      } catch (e) {
+        console.error('Failed to save bookmark', e);
+      }
+    }
+  };
+
   /* ================= ANDROID BACK ================= */
   useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
     const sub = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
@@ -32,17 +82,14 @@ export default function Index() {
           setShowMenu(false);
           return true;
         }
-
         if (showBookmarks) {
           setShowBookmarks(false);
           return true;
         }
-
         if (canGoBack) {
           webViewRef.current?.goBack();
           return true;
         }
-
         return false;
       }
     );
@@ -60,13 +107,6 @@ export default function Index() {
     setShowMenu(false);
   };
 
-  /* ================= BOOKMARK ================= */
-  const addBookmark = () => {
-    if (!bookmarks.includes(url)) {
-      setBookmarks([...bookmarks, url]);
-    }
-  };
-
   /* ================= COLORS ================= */
   const colors = {
     header: darkMode ? '#121212' : '#1e88e5',
@@ -79,8 +119,9 @@ export default function Index() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-      {/* ================= HEADER + TOOLBAR ================= */}
-      <View style={{ zIndex: 10 }}>
+
+      {/* ================= HEADER ================= */}
+      <View style={{ zIndex: 50 }}>
         <Header
           inputUrl={inputUrl}
           setInputUrl={setInputUrl}
@@ -93,17 +134,44 @@ export default function Index() {
             canGoBack={canGoBack}
             canGoForward={canGoForward}
             webViewRef={webViewRef}
-            onMenu={() => setShowMenu(!showMenu)}
+            onMenu={() => setShowMenu(prev => !prev)}
           />
         </Header>
+      </View>
 
-        {/* ================= MENU ================= */}
-        {showMenu && (
+      {/* ================= TOUCH BLOCKER ================= */}
+      {overlayVisible && (
+        <Pressable
+          style={{
+            position: 'absolute',
+            top: HEADER_HEIGHT,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 20,
+          }}
+          onPress={() => {
+            setShowMenu(false);
+            setShowBookmarks(false);
+          }}
+        />
+      )}
+
+      {/* ================= MENU ================= */}
+      {showMenu && (
+        <View
+          style={{
+            position: 'absolute',
+            top: HEADER_HEIGHT,
+            right: 8,
+            zIndex: 60,
+          }}
+        >
           <MenuSheet
             colors={colors}
             darkMode={darkMode}
             onToggleDark={() => {
-              setDarkMode(!darkMode);
+              setDarkMode(p => !p);
               setShowMenu(false);
             }}
             onAddBookmark={() => {
@@ -116,10 +184,21 @@ export default function Index() {
             }}
             onClose={() => setShowMenu(false)}
           />
-        )}
+        </View>
+      )}
 
-        {/* ================= BOOKMARK LIST ================= */}
-        {showBookmarks && (
+      {/* ================= BOOKMARK LIST (FIXED) ================= */}
+      {showBookmarks && (
+        <View
+          style={{
+            position: 'absolute',
+            top: HEADER_HEIGHT,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 60,
+          }}
+        >
           <BookmarkList
             bookmarks={bookmarks}
             colors={colors}
@@ -130,25 +209,33 @@ export default function Index() {
             }}
             onClose={() => setShowBookmarks(false)}
           />
-        )}
-      </View>
+        </View>
+      )}
 
-      {/* ================= WEBVIEW ================= */}
-      <WebView
-        ref={webViewRef}
-        source={{ uri: url }}
-        onLoadProgress={({ nativeEvent }) =>
-          setProgress(nativeEvent.progress)
-        }
-        onNavigationStateChange={(nav) => {
-          setCanGoBack(nav.canGoBack);
-          setCanGoForward(nav.canGoForward);
-          setInputUrl(nav.url);
-        }}
-        {...(Platform.OS === 'android'
-          ? { forceDarkOn: darkMode }
-          : {})}
-      />
+      {/* ================= CONTENT ================= */}
+      {Platform.OS === 'web' ? (
+        <iframe
+          src={url}
+          style={{ width: '100%', height: '100%', border: 'none' }}
+        />
+      ) : (
+        <WebView
+          ref={webViewRef}
+          source={{ uri: url }}
+          scrollEnabled={!overlayVisible}
+          onLoadProgress={({ nativeEvent }) =>
+            setProgress(nativeEvent.progress)
+          }
+          onNavigationStateChange={(nav) => {
+            setCanGoBack(nav.canGoBack);
+            setCanGoForward(nav.canGoForward);
+            setInputUrl(nav.url);
+          }}
+          {...(Platform.OS === 'android'
+            ? { forceDarkOn: darkMode }
+            : {})}
+        />
+      )}
     </SafeAreaView>
   );
 }
