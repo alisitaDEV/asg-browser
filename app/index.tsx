@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import * as Clipboard from 'expo-clipboard';
+import Toast, { BaseToast } from 'react-native-toast-message';
 import {
   BackHandler,
   Platform,
@@ -26,8 +28,8 @@ type Tab = {
 
 export default function Index() {
   const webViewRef = useRef<WebView>(null);
-  const [inputUrl, setInputUrl] = useState('https://example.com');
-  const [url, setUrl] = useState(inputUrl);
+  const [inputUrl, setInputUrl] = useState('https://almuhsinin.my.id');
+  const [url, setUrl] = useState('about:blank');
   const [progress, setProgress] = useState(0);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
@@ -38,6 +40,18 @@ export default function Index() {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string>();
   const [showTabs, setShowTabs] = useState(false);
+
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    url: string;
+    x: number;
+    y: number;
+  }>({
+    visible: false,
+    url: '',
+    x: 0,
+    y: 0,
+  });
 
   const overlayVisible = showMenu || showBookmarks || showTabs;
 
@@ -77,11 +91,21 @@ export default function Index() {
     if (!bookmarks.includes(url)) {
       const newBookmarks = [...bookmarks, url];
       setBookmarks(newBookmarks);
-      try {
-        await AsyncStorage.setItem('bookmarks', JSON.stringify(newBookmarks));
-      } catch (e) {
-        console.error('Failed to save bookmark', e);
-      }
+      await AsyncStorage.setItem('bookmarks', JSON.stringify(newBookmarks));
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Bookmark ditambahkan!',
+        position: 'bottom',
+        visibilityTime: 2000,
+      });
+    } else {
+      Toast.show({
+        type: 'success',
+        text1: 'Sudah ada di bookmark',
+        position: 'bottom',
+        visibilityTime: 2000,
+      });
     }
   };
 
@@ -158,6 +182,114 @@ export default function Index() {
     icon: '#fff',
   };
 
+  const toastConfig = {
+    success: (props) => (
+      <BaseToast
+        {...props}
+        style={{
+          borderLeftColor: '#4caf50',
+          backgroundColor: darkMode ? '#333333' : '#ffffff',  // background ikut dark mode
+          borderRadius: 8,
+        }}
+        contentContainerStyle={{ paddingHorizontal: 15 }}
+        text1Style={{
+          fontSize: 15,
+          fontWeight: '600',
+          color: darkMode ? '#ffffff' : '#000000',  // teks ikut dark mode
+        }}
+        text2Style={{
+          fontSize: 13,
+          color: darkMode ? '#cccccc' : '#666666',
+        }}
+      />
+    ),
+
+    // Optional: kalau mau error toast juga custom
+    error: (props) => (
+      <ErrorToast
+        {...props}
+        style={{
+          borderLeftColor: '#f44336',
+          backgroundColor: darkMode ? '#333333' : '#ffffff',
+        }}
+        text1Style={{
+          color: darkMode ? '#ffffff' : '#000000',
+        }}
+        text2Style={{
+          color: darkMode ? '#cccccc' : '#666666',
+        }}
+      />
+    ),
+  };
+
+  /* ================= INITIAL TAB ================= */
+  useEffect(() => {
+    if (tabs.length === 0) {
+      const initialTab: Tab = {
+        id: Date.now().toString(),
+        url: 'https://almuhsinin.my.id',
+        canGoBack: false,
+        canGoForward: false,
+      };
+      setTabs([initialTab]);
+      setActiveTabId(initialTab.id);
+      setUrl(initialTab.url);
+      setInputUrl(initialTab.url);
+    }
+  }, [tabs.length]); // hanya jalan saat tabs kosong
+
+  /* INJECT KONSTANTA INI DI SINI */
+  const INJECTED_JAVASCRIPT = `(function() {
+    let longPressTimer;
+    const LONG_PRESS_DURATION = 500;
+
+    // Mencegah context menu default
+    document.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+    });
+
+    document.addEventListener('touchstart', function(e) {
+      if (e.target.tagName === 'A') {
+        const link = e.target.href;
+        if (!link) return;
+
+        longPressTimer = setTimeout(function() {
+          const touch = e.touches[0];
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'LONG_PRESS_LINK',
+            url: link,
+            x: touch.clientX,
+            y: touch.clientY
+          }));
+        }, LONG_PRESS_DURATION);
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchend', function() {
+      clearTimeout(longPressTimer);
+    });
+
+    document.addEventListener('touchmove', function() {
+      clearTimeout(longPressTimer);
+    });
+
+    // Support mouse right click (untuk emulator/web)
+    document.addEventListener('mousedown', function(e) {
+      if (e.target.tagName === 'A' && e.button === 2) {
+        e.preventDefault();
+        const link = e.target.href;
+        if (link) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'LONG_PRESS_LINK',
+            url: link,
+            x: e.clientX,
+            y: e.clientY
+          }));
+        }
+      }
+    });
+  })();`;
+
   /* ================= RENDER ================= */
   return (
     <SafeAreaView style={{ flex: 1 }} edges={['top']}>
@@ -229,7 +361,7 @@ export default function Index() {
             onAddTab={() => {
               const newTab: Tab = {
                 id: Date.now().toString(),
-                url: 'about:blank',
+                url: 'https://almuhsinin.my.id',
                 canGoBack: false,
                 canGoForward: false,
               };
@@ -316,6 +448,98 @@ export default function Index() {
       )}
 
       {/* ================= WEBVIEW / IFRAME ================= */}
+      {contextMenu.visible && (
+        <>
+          {/* Blocker agar bisa tap di luar untuk close */}
+          <Pressable
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 90,
+            }}
+            onPress={() => setContextMenu({ visible: false, url: '', x: 0, y: 0 })}
+          />
+
+          {/* Menu itu sendiri */}
+          <View
+            style={{
+              position: 'absolute',
+              left: contextMenu.x,
+              top: contextMenu.y,
+              backgroundColor: darkMode ? '#333' : '#fff',
+              borderRadius: 8,
+              paddingVertical: 8,
+              elevation: 10,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.25,
+              shadowRadius: 4,
+              zIndex: 100,
+              minWidth: 180,
+            }}
+          >
+            <Pressable
+              onPress={async () => {
+                await Clipboard.setStringAsync(contextMenu.url);
+                Toast.show({
+                  type: 'success',
+                  text1: 'Link berhasil disalin!',
+                  position: 'bottom',
+                  visibilityTime: 2000,
+                });
+                setContextMenu({ visible: false, url: '', x: 0, y: 0 });
+              }}
+              style={{ padding: 12 }}
+            >
+              <Text style={{ color: colors.text }}>Copy Link</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                const newTab: Tab = {
+                  id: Date.now().toString(),
+                  url: contextMenu.url,
+                  canGoBack: false,
+                  canGoForward: false,
+                };
+                setTabs(prev => [...prev, newTab]);
+                setActiveTabId(newTab.id);
+                setUrl(newTab.url);
+                setInputUrl(newTab.url);
+                setContextMenu({ visible: false, url: '', x: 0, y: 0 });
+              }}
+              style={{ padding: 12 }}
+            >
+              <Text style={{ color: colors.text }}>Open in New Tab</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                setUrl(contextMenu.url);
+                setInputUrl(contextMenu.url);
+                setTabs(prev => prev.map(t =>
+                  t.id === activeTabId ? { ...t, url: contextMenu.url } : t
+                ));
+                setContextMenu({ visible: false, url: '', x: 0, y: 0 });
+              }}
+              style={{ padding: 12, borderTopWidth: 1, borderTopColor: colors.border }}
+            >
+              <Text style={{ color: colors.text }}>Open in Current Tab</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setContextMenu({ visible: false, url: '', x: 0, y: 0 })}
+              style={{ padding: 12 }}
+            >
+              <Text style={{ color: 'gray' }}>Cancel</Text>
+            </Pressable>
+          </View>
+        </>
+      )}
+
       {Platform.OS === 'web' ? (
         <iframe
           src={url}
@@ -326,6 +550,22 @@ export default function Index() {
           ref={webViewRef}
           source={{ uri: url }}
           scrollEnabled={!overlayVisible}
+          injectedJavaScript={INJECTED_JAVASCRIPT}  
+          onMessage={(event) => {                  
+            try {
+              const data = JSON.parse(event.nativeEvent.data);
+              if (data.type === 'LONG_PRESS_LINK') {
+                setContextMenu({
+                  visible: true,
+                  url: data.url,
+                  x: data.x - 80,  // agar menu tidak keluar layar
+                  y: data.y + HEADER_HEIGHT + 10,
+                });
+              }
+            } catch (e) {
+              console.log('Invalid message');
+            }
+          }}
           onLoadProgress={({ nativeEvent }) =>
             setProgress(nativeEvent.progress)
           }
@@ -348,6 +588,8 @@ export default function Index() {
           {...(Platform.OS === 'android' ? { forceDarkOn: darkMode } : {})}
         />
       )}
+
+      <Toast config={toastConfig} />
     </SafeAreaView>
   );
 }
