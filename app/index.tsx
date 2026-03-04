@@ -227,14 +227,14 @@ export default function Index() {
     if (tabs.length === 0) {
       const initialTab: Tab = {
         id: Date.now().toString(),
-        url: 'https://almuhsinin.my.id',
+        url: 'about:blank',
         canGoBack: false,
         canGoForward: false,
       };
       setTabs([initialTab]);
       setActiveTabId(initialTab.id);
-      setUrl(initialTab.url);
-      setInputUrl(initialTab.url);
+      setUrl('about:blank');
+      setInputUrl('');
     }
   }, [tabs.length]); // hanya jalan saat tabs kosong
 
@@ -245,12 +245,16 @@ export default function Index() {
 
     // Mencegah context menu default
     document.addEventListener('contextmenu', function(e) {
-      e.preventDefault();
+      if (e.target.tagName === 'A' || e.target.closest('a')) {
+        e.preventDefault();
+      }
     });
 
     document.addEventListener('touchstart', function(e) {
-      if (e.target.tagName === 'A') {
-        const link = e.target.href;
+      const anchor = e.target.tagName === 'A' ? e.target : e.target.closest('a');
+      
+      if (anchor) {
+        const link = anchor.href;
         if (!link) return;
 
         longPressTimer = setTimeout(function() {
@@ -361,14 +365,14 @@ export default function Index() {
             onAddTab={() => {
               const newTab: Tab = {
                 id: Date.now().toString(),
-                url: 'https://almuhsinin.my.id',
+                url: 'about:blank',
                 canGoBack: false,
                 canGoForward: false,
               };
               setTabs(prev => [...prev, newTab]);
               setActiveTabId(newTab.id);
-              setUrl(newTab.url);
-              setInputUrl(newTab.url);
+              setUrl('about:blank');
+              setInputUrl('');
               closeAllSheets();
             }}
           />
@@ -540,53 +544,80 @@ export default function Index() {
         </>
       )}
 
-      {Platform.OS === 'web' ? (
-        <iframe
-          src={url}
-          style={{ width: '100%', height: '100%', border: 'none' }}
-        />
+      {url === 'about:blank' || url === '' ? (
+        /* Tampilan Halaman Utama (ASG Browser) */
+        <View style={{ 
+          flex: 1, 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          backgroundColor: darkMode ? '#121212' : '#f5f5f5' 
+        }}>
+          <Text style={{ 
+            fontSize: 42, 
+            fontWeight: 'bold', 
+            color: colors.progress, 
+            marginBottom: 10 
+          }}>
+            ASG Browser
+          </Text>
+          <Text style={{ 
+            fontSize: 16, 
+            color: colors.text, 
+            opacity: 0.7 
+          }}>
+            Browser privat dibuat oleh M Ali Muhsinin
+          </Text>
+        </View>
       ) : (
-        <WebView
-          ref={webViewRef}
-          source={{ uri: url }}
-          scrollEnabled={!overlayVisible}
-          injectedJavaScript={INJECTED_JAVASCRIPT}  
-          onMessage={(event) => {                  
-            try {
-              const data = JSON.parse(event.nativeEvent.data);
-              if (data.type === 'LONG_PRESS_LINK') {
-                setContextMenu({
-                  visible: true,
-                  url: data.url,
-                  x: data.x - 80,  // agar menu tidak keluar layar
-                  y: data.y + HEADER_HEIGHT + 10,
-                });
+        /* Tetap Mempertahankan Mesin Browser Asli Anda */
+        Platform.OS === 'web' ? (
+          <iframe
+            src={url}
+            style={{ width: '100%', height: '100%', border: 'none' }}
+          />
+        ) : (
+          <WebView
+            ref={webViewRef}
+            source={{ uri: url }}
+            scrollEnabled={!overlayVisible}
+            injectedJavaScript={INJECTED_JAVASCRIPT}  
+            onMessage={(event) => {                  
+              try {
+                const data = JSON.parse(event.nativeEvent.data);
+                if (data.type === 'LONG_PRESS_LINK') {
+                  setContextMenu({
+                    visible: true,
+                    url: data.url,
+                    x: data.x - 80,
+                    y: data.y + HEADER_HEIGHT + 10,
+                  });
+                }
+              } catch (e) {
+                console.log('Invalid message');
               }
-            } catch (e) {
-              console.log('Invalid message');
+            }}
+            onLoadProgress={({ nativeEvent }) =>
+              setProgress(nativeEvent.progress)
             }
-          }}
-          onLoadProgress={({ nativeEvent }) =>
-            setProgress(nativeEvent.progress)
-          }
-          onNavigationStateChange={nav => {
-            setCanGoBack(nav.canGoBack);
-            setCanGoForward(nav.canGoForward);
-            setInputUrl(nav.url);
-            setTabs(prev =>
-              prev.map(t =>
-                t.id === activeTabId
-                  ? { ...t, canGoBack: nav.canGoBack, canGoForward: nav.canGoForward }
-                  : t
-              )
-            );
-          }}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          mediaPlaybackRequiresUserAction={false}
-          allowsFullscreenVideo={true}
-          {...(Platform.OS === 'android' ? { forceDarkOn: darkMode } : {})}
-        />
+            onNavigationStateChange={nav => {
+              setCanGoBack(nav.canGoBack);
+              setCanGoForward(nav.canGoForward);
+              setInputUrl(nav.url);
+              setTabs(prev =>
+                prev.map(t =>
+                  t.id === activeTabId
+                    ? { ...t, canGoBack: nav.canGoBack, canGoForward: nav.canGoForward, url: nav.url }
+                    : t
+                )
+              );
+            }}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            mediaPlaybackRequiresUserAction={false}
+            allowsFullscreenVideo={true}
+            {...(Platform.OS === 'android' ? { forceDarkOn: darkMode } : {})}
+          />
+        )
       )}
 
       <Toast config={toastConfig} />
