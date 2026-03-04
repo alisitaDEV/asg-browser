@@ -150,23 +150,33 @@ export default function Index() {
   /* ================= URL ================= */
   const openUrl = () => {
     let finalUrl = inputUrl.trim();
+
+    if (!finalUrl) return;
+
     if (!finalUrl.startsWith('http')) {
       finalUrl = 'https://' + finalUrl;
     }
     setUrl(finalUrl);
 
-    const existingTab = tabs.find(t => t.url === finalUrl);
-    if (!existingTab) {
+    if (activeTabId) {
+      setTabs(prev =>
+        prev.map(t =>
+          t.id === activeTabId
+            ? { ...t, url: finalUrl }
+            : t
+        )
+      );
+      setUrl(finalUrl); 
+    } else {
       const newTab: Tab = {
         id: Date.now().toString(),
         url: finalUrl,
         canGoBack: false,
         canGoForward: false,
       };
-      setTabs(prev => [...prev, newTab]);
+      setTabs([newTab]);
       setActiveTabId(newTab.id);
-    } else {
-      setActiveTabId(existingTab.id);
+      setUrl(finalUrl);
     }
 
     closeAllSheets();
@@ -343,8 +353,10 @@ export default function Index() {
             colors={colors}
             onSelect={(tab) => {
               setActiveTabId(tab.id);
-              setUrl(tab.url);
-              setInputUrl(tab.url);
+              setUrl(tab.url); // Penting agar state sinkron
+              setInputUrl(tab.url === 'about:blank' ? '' : tab.url);
+              setCanGoBack(tab.canGoBack); // Ambil status back dari tab tersebut
+              setCanGoForward(tab.canGoForward);
               closeAllSheets();
             }}
             onClose={(tab) => {
@@ -544,81 +556,103 @@ export default function Index() {
         </>
       )}
 
-      {url === 'about:blank' || url === '' ? (
-        /* Tampilan Halaman Utama (ASG Browser) */
-        <View style={{ 
-          flex: 1, 
-          justifyContent: 'center', 
-          alignItems: 'center', 
-          backgroundColor: darkMode ? '#121212' : '#f5f5f5' 
-        }}>
-          <Text style={{ 
-            fontSize: 42, 
-            fontWeight: 'bold', 
-            color: colors.progress, 
-            marginBottom: 10 
-          }}>
-            ASG Browser
-          </Text>
-          <Text style={{ 
-            fontSize: 16, 
-            color: colors.text, 
-            opacity: 0.7 
-          }}>
-            Browser privat dibuat oleh M Ali Muhsinin
-          </Text>
+      {/* ================= MULTI-TAB WEBVIEW RENDERER ================= */}
+      {tabs.map((tab) => (
+        <View
+          key={tab.id}
+          style={{
+            flex: 1,
+            // Jika tab ID cocok dengan yang aktif, tampilkan. Jika tidak, sembunyikan (tapi tetap ada di memori)
+            display: tab.id === activeTabId ? 'flex' : 'none',
+          }}
+        >
+          {tab.url === 'about:blank' || tab.url === '' ? (
+            /* Tampilan Halaman Utama (ASG Browser) */
+            <View style={{ 
+              flex: 1, 
+              justifyContent: 'center', 
+              alignItems: 'center', 
+              backgroundColor: darkMode ? '#121212' : '#f5f5f5' 
+            }}>
+              <Text style={{ 
+                fontSize: 42, 
+                fontWeight: 'bold', 
+                color: colors.progress, 
+                marginBottom: 10 
+              }}>
+                ASG Browser
+              </Text>
+              <Text style={{ 
+                fontSize: 16, 
+                color: colors.text, 
+                opacity: 0.7 
+              }}>
+                Browser privat dibuat oleh M Ali Muhsinin
+              </Text>
+            </View>
+          ) : (
+            /* Mesin Browser per Tab */
+            Platform.OS === 'web' ? (
+              <iframe
+                src={tab.url}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+              />
+            ) : (
+              <WebView
+                // Ref hanya ditempelkan pada tab yang aktif agar toolbar mengontrol halaman yang benar
+                ref={tab.id === activeTabId ? webViewRef : null}
+                source={{ uri: tab.url }}
+                scrollEnabled={!overlayVisible}
+                injectedJavaScript={INJECTED_JAVASCRIPT}  
+                onMessage={(event) => {                  
+                  try {
+                    const data = JSON.parse(event.nativeEvent.data);
+                    if (data.type === 'LONG_PRESS_LINK') {
+                      setContextMenu({
+                        visible: true,
+                        url: data.url,
+                        x: data.x - 80,
+                        y: data.y + HEADER_HEIGHT + 10,
+                      });
+                    }
+                  } catch (e) {
+                    console.log('Invalid message');
+                  }
+                }}
+                onLoadProgress={({ nativeEvent }) => {
+                  // Hanya update progress bar jika tab ini yang sedang dilihat
+                  if (tab.id === activeTabId) {
+                    setProgress(nativeEvent.progress);
+                  }
+                }}
+                onNavigationStateChange={nav => {
+                  // Update data di daftar tabs secara spesifik untuk ID tab ini
+                  setTabs(prev =>
+                    prev.map(t =>
+                      t.id === tab.id
+                        ? { ...t, canGoBack: nav.canGoBack, canGoForward: nav.canGoForward, url: nav.url }
+                        : t
+                    )
+                  );
+
+                  // Jika tab yang sedang berubah ini adalah tab aktif, update UI utama
+                  if (tab.id === activeTabId) {
+                    setCanGoBack(nav.canGoBack);
+                    setCanGoForward(nav.canGoForward);
+                    setInputUrl(nav.url);
+                    setUrl(nav.url);
+                  }
+                }}
+                javaScriptEnabled={true}
+                domStorageEnabled={true}
+                mediaPlaybackRequiresUserAction={false}
+                allowsFullscreenVideo={true}
+                {...(Platform.OS === 'android' ? { forceDarkOn: darkMode } : {})}
+              />
+            )
+          )}
         </View>
-      ) : (
-        /* Tetap Mempertahankan Mesin Browser Asli Anda */
-        Platform.OS === 'web' ? (
-          <iframe
-            src={url}
-            style={{ width: '100%', height: '100%', border: 'none' }}
-          />
-        ) : (
-          <WebView
-            ref={webViewRef}
-            source={{ uri: url }}
-            scrollEnabled={!overlayVisible}
-            injectedJavaScript={INJECTED_JAVASCRIPT}  
-            onMessage={(event) => {                  
-              try {
-                const data = JSON.parse(event.nativeEvent.data);
-                if (data.type === 'LONG_PRESS_LINK') {
-                  setContextMenu({
-                    visible: true,
-                    url: data.url,
-                    x: data.x - 80,
-                    y: data.y + HEADER_HEIGHT + 10,
-                  });
-                }
-              } catch (e) {
-                console.log('Invalid message');
-              }
-            }}
-            onLoadProgress={({ nativeEvent }) =>
-              setProgress(nativeEvent.progress)
-            }
-            onNavigationStateChange={nav => {
-              setCanGoBack(nav.canGoBack);
-              setCanGoForward(nav.canGoForward);
-              setInputUrl(nav.url);
-              setTabs(prev =>
-                prev.map(t =>
-                  t.id === activeTabId
-                    ? { ...t, canGoBack: nav.canGoBack, canGoForward: nav.canGoForward, url: nav.url }
-                    : t
-                )
-              );
-            }}
-            javaScriptEnabled={true}
-            domStorageEnabled={true}
-            mediaPlaybackRequiresUserAction={false}
-            allowsFullscreenVideo={true}
-            {...(Platform.OS === 'android' ? { forceDarkOn: darkMode } : {})}
-          />
-        )
-      )}
+      ))}
 
       <Toast config={toastConfig} />
     </SafeAreaView>
