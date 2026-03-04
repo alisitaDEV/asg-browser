@@ -149,16 +149,29 @@ export default function Index() {
 
   /* ================= URL ================= */
   const openUrl = () => {
-    let finalUrl = inputUrl.trim();
+    let query = inputUrl.trim();
 
-    if (!finalUrl) return;
+    if (!query) return;
 
-    if (!finalUrl.startsWith('http')) {
-      finalUrl = 'https://' + finalUrl;
+    let finalUrl = '';
+
+    // Logika Cerdas: Cek apakah input adalah pencarian atau URL
+    // Jika mengandung spasi ATAU tidak mengandung titik, maka anggap sebagai pencarian
+    const isSearch = query.includes(' ') || !query.includes('.');
+
+    if (isSearch) {
+      // Arahkan ke DuckDuckGo
+      finalUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
+    } else {
+      // Jika itu URL, pastikan ada protokol http/https
+      finalUrl = query.startsWith('http') ? query : 'https://' + query;
     }
+
+    // Update State URL utama
     setUrl(finalUrl);
 
     if (activeTabId) {
+      // Update tab yang sedang aktif agar tidak buka tab baru
       setTabs(prev =>
         prev.map(t =>
           t.id === activeTabId
@@ -166,8 +179,10 @@ export default function Index() {
             : t
         )
       );
+      // Pastikan WebView merespon perubahan URL
       setUrl(finalUrl); 
     } else {
+      // Jika karena suatu alasan tidak ada tab aktif, buat baru
       const newTab: Tab = {
         id: Date.now().toString(),
         url: finalUrl,
