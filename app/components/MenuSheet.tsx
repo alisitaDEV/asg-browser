@@ -9,7 +9,9 @@ import { Ionicons } from '@expo/vector-icons';
 export default function MenuSheet({
   colors,
   darkMode,
+  isDesktop,
   onToggleDark,
+  onToggleDesktop,
   onAddBookmark,
   onShowBookmarks,
   onClose,
@@ -57,6 +59,14 @@ export default function MenuSheet({
           label={darkMode ? 'Light Mode' : 'Dark Mode'}
           onPress={onToggleDark}
           colors={colors}
+        />
+
+        <MenuItem
+          icon="desktop-outline"
+          label={isDesktop ? 'Mobile Version' : 'Desktop Version (Firefox)'}
+          onPress={onToggleDesktop}
+          colors={colors}
+          active={isDesktop}
         />
       </Pressable>
     </Pressable>

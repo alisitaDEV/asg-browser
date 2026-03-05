@@ -2,7 +2,7 @@
   "expo": {
     "name": "ASG Browser",
     "slug": "asg-browser",
-    "version": "1.0.2",
+    "version": "2.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "asgbrowser",

@@ -40,6 +40,8 @@ export default function Index() {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string>();
   const [showTabs, setShowTabs] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const DESKTOP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0";
 
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
@@ -155,23 +157,17 @@ export default function Index() {
 
     let finalUrl = '';
 
-    // Logika Cerdas: Cek apakah input adalah pencarian atau URL
-    // Jika mengandung spasi ATAU tidak mengandung titik, maka anggap sebagai pencarian
     const isSearch = query.includes(' ') || !query.includes('.');
 
     if (isSearch) {
-      // Arahkan ke DuckDuckGo
       finalUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
     } else {
-      // Jika itu URL, pastikan ada protokol http/https
       finalUrl = query.startsWith('http') ? query : 'https://' + query;
     }
 
-    // Update State URL utama
     setUrl(finalUrl);
 
     if (activeTabId) {
-      // Update tab yang sedang aktif agar tidak buka tab baru
       setTabs(prev =>
         prev.map(t =>
           t.id === activeTabId
@@ -179,10 +175,9 @@ export default function Index() {
             : t
         )
       );
-      // Pastikan WebView merespon perubahan URL
+      
       setUrl(finalUrl); 
     } else {
-      // Jika karena suatu alasan tidak ada tab aktif, buat baru
       const newTab: Tab = {
         id: Date.now().toString(),
         url: finalUrl,
@@ -229,7 +224,6 @@ export default function Index() {
       />
     ),
 
-    // Optional: kalau mau error toast juga custom
     error: (props) => (
       <ErrorToast
         {...props}
@@ -261,7 +255,7 @@ export default function Index() {
       setUrl('about:blank');
       setInputUrl('');
     }
-  }, [tabs.length]); // hanya jalan saat tabs kosong
+  }, [tabs.length]); 
 
   /* INJECT KONSTANTA INI DI SINI */
   const INJECTED_JAVASCRIPT = `(function() {
@@ -368,9 +362,9 @@ export default function Index() {
             colors={colors}
             onSelect={(tab) => {
               setActiveTabId(tab.id);
-              setUrl(tab.url); // Penting agar state sinkron
+              setUrl(tab.url); 
               setInputUrl(tab.url === 'about:blank' ? '' : tab.url);
-              setCanGoBack(tab.canGoBack); // Ambil status back dari tab tersebut
+              setCanGoBack(tab.canGoBack); 
               setCanGoForward(tab.canGoForward);
               closeAllSheets();
             }}
@@ -438,6 +432,11 @@ export default function Index() {
               setDarkMode(p => !p);
               closeAllSheets();
             }}
+            isDesktop={isDesktop}
+            onToggleDesktop={() => {
+              setIsDesktop(p => !p);
+              closeAllSheets();
+            }}
             onAddBookmark={() => {
               addBookmark();
               closeAllSheets();
@@ -470,8 +469,20 @@ export default function Index() {
             onSelect={(b: string) => {
               setUrl(b);
               setInputUrl(b);
+
+              if (activeTabId) {
+                setTabs(prev =>
+                  prev.map(t =>
+                    t.id === activeTabId
+                      ? { ...t, url: b }
+                      : t
+                  )
+                );
+              }
+
               closeAllSheets();
             }}
+
             onClose={closeAllSheets}
             onDelete={deleteBookmark} 
           />
@@ -481,7 +492,6 @@ export default function Index() {
       {/* ================= WEBVIEW / IFRAME ================= */}
       {contextMenu.visible && (
         <>
-          {/* Blocker agar bisa tap di luar untuk close */}
           <Pressable
             style={{
               position: 'absolute',
@@ -494,7 +504,6 @@ export default function Index() {
             onPress={() => setContextMenu({ visible: false, url: '', x: 0, y: 0 })}
           />
 
-          {/* Menu itu sendiri */}
           <View
             style={{
               position: 'absolute',
@@ -577,7 +586,6 @@ export default function Index() {
           key={tab.id}
           style={{
             flex: 1,
-            // Jika tab ID cocok dengan yang aktif, tampilkan. Jika tidak, sembunyikan (tapi tetap ada di memori)
             display: tab.id === activeTabId ? 'flex' : 'none',
           }}
         >
@@ -606,7 +614,6 @@ export default function Index() {
               </Text>
             </View>
           ) : (
-            /* Mesin Browser per Tab */
             Platform.OS === 'web' ? (
               <iframe
                 src={tab.url}
@@ -614,9 +621,10 @@ export default function Index() {
               />
             ) : (
               <WebView
-                // Ref hanya ditempelkan pada tab yang aktif agar toolbar mengontrol halaman yang benar
                 ref={tab.id === activeTabId ? webViewRef : null}
                 source={{ uri: tab.url }}
+                userAgent={isDesktop ? DESKTOP_USER_AGENT : undefined}
+                applicationNameForUserAgent={'Firefox/135.0'}
                 scrollEnabled={!overlayVisible}
                 injectedJavaScript={INJECTED_JAVASCRIPT}  
                 onMessage={(event) => {                  
@@ -635,13 +643,11 @@ export default function Index() {
                   }
                 }}
                 onLoadProgress={({ nativeEvent }) => {
-                  // Hanya update progress bar jika tab ini yang sedang dilihat
                   if (tab.id === activeTabId) {
                     setProgress(nativeEvent.progress);
                   }
                 }}
                 onNavigationStateChange={nav => {
-                  // Update data di daftar tabs secara spesifik untuk ID tab ini
                   setTabs(prev =>
                     prev.map(t =>
                       t.id === tab.id
@@ -650,7 +656,6 @@ export default function Index() {
                     )
                   );
 
-                  // Jika tab yang sedang berubah ini adalah tab aktif, update UI utama
                   if (tab.id === activeTabId) {
                     setCanGoBack(nav.canGoBack);
                     setCanGoForward(nav.canGoForward);
